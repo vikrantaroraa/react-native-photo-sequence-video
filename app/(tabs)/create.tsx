@@ -57,7 +57,13 @@ export default function CreateScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Create Video</Text>
         {photos.length > 0 && (
-          <Link href="/preview" asChild>
+          <Link
+            href={{
+              pathname: "/preview",
+              params: { photos: JSON.stringify(photos) },
+            }}
+            asChild
+          >
             <TouchableOpacity style={styles.previewButton}>
               <Play size={20} color="#fff" />
               <Text style={styles.previewText}>Preview</Text>
