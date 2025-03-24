@@ -11,21 +11,29 @@ import * as ImagePicker from "expo-image-picker";
 import { ImagePlus, Trash2, Play } from "lucide-react-native";
 import { Link } from "expo-router";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import * as FileSystem from "expo-file-system";
 
 const MAX_PHOTOS = 12;
 
 export default function CreateScreen() {
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
 
-  useEffect(() => {
-    (async () => {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        alert("Sorry, we need media library permissions to proceed!");
-      }
-    })();
-  }, []);
+  async function savePhoto(uri: string) {
+    const fileName = uri.split("/").pop(); // Extract file name
+    const newPath = `${FileSystem.documentDirectory}${fileName}`; // Save to app's permanent storage
+
+    try {
+      await FileSystem.moveAsync({
+        from: uri,
+        to: newPath,
+      });
+      console.log("File moved successfully:", newPath);
+      return newPath;
+    } catch (error) {
+      console.log("Error moving file:", error);
+      return uri; // Return original URI if moving fails
+    }
+  }
 
   const pickPhotos = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -36,8 +44,15 @@ export default function CreateScreen() {
     });
 
     if (!result.canceled) {
-      if (result.assets.length + photos.length <= MAX_PHOTOS) {
-        setPhotos([...photos, ...result.assets]);
+      const savedPhotos = await Promise.all(
+        result.assets.map(async (photo) => {
+          const newUri = await savePhoto(photo.uri); // Save photo
+          return { ...photo, uri: newUri }; // Update photo with new path
+        })
+      );
+
+      if (savedPhotos.length + photos.length <= MAX_PHOTOS) {
+        setPhotos([...photos, ...savedPhotos]);
       } else {
         alert(`You can only select up to ${MAX_PHOTOS} photos!`);
       }
@@ -50,6 +65,16 @@ export default function CreateScreen() {
     setPhotos((current) =>
       current.filter((photo) => photo.assetId !== id && photo.uri !== id)
     );
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        alert("Sorry, we need media library permissions to proceed!");
+      }
+    })();
   }, []);
 
   return (

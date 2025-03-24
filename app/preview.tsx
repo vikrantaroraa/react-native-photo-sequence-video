@@ -14,20 +14,38 @@ import Animated, {
   withTiming,
   withSequence,
   withDelay,
+  useSharedValue,
 } from "react-native-reanimated";
 import * as MediaLibrary from "expo-media-library";
-import { Image } from "react-native";
 import * as FileSystem from "expo-file-system";
 
 export default function PreviewScreen() {
   const [sound, setSound] = useState<Audio.Sound>();
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const opacity = useSharedValue(1); // Shared value for fade effect
+  const translateX = useSharedValue(0); // Position for sliding
 
   const { photos } = useLocalSearchParams();
   const parsedPhotos = typeof photos === "string" ? JSON.parse(photos) : [];
-  console.log("Parsed photos:", parsedPhotos);
-  console.log("first Parsed photos:", parsedPhotos[currentPhotoIndex]?.uri);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      translateX.value = -300; // Slide out to the left
+      opacity.value = 0; // Fade out
+      setTimeout(() => {
+        setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
+        translateX.value = 300; // Reset to right for next slide
+        opacity.value = 0;
+        setTimeout(() => {
+          translateX.value = 0; // Slide in from right
+          opacity.value = 1; // Fade in
+        }, 100);
+      }, 500);
+    }, 3000); // Every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [photos.length]);
 
   useEffect(() => {
     loadAudio();
@@ -78,11 +96,6 @@ export default function PreviewScreen() {
     checkPermission();
   }, []);
 
-  const fallbackUri = "https://picsum.photos/300/500";
-  const photoUri = parsedPhotos[currentPhotoIndex]?.uri.startsWith("file://")
-    ? parsedPhotos[currentPhotoIndex]?.uri
-    : fallbackUri;
-
   async function checkFileType(uri: string) {
     const info = await FileSystem.getInfoAsync(uri);
     console.log("File Info:", info);
@@ -92,6 +105,13 @@ export default function PreviewScreen() {
       checkFileType(parsedPhotos[currentPhotoIndex]?.uri);
     }
   }, [currentPhotoIndex]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(opacity.value, { duration: 500 }),
+    transform: [
+      { translateX: withTiming(translateX.value, { duration: 500 }) },
+    ],
+  }));
 
   return (
     <View style={styles.container}>
@@ -127,6 +147,7 @@ export default function PreviewScreen() {
               styles.previewImage,
               fadeStyle,
               slideStyle,
+              animatedStyle,
               {
                 width: 300, // Temporary width
                 height: 500, // Temporary height
