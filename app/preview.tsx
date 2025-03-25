@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
   Platform,
+  BackHandler,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft, Download, Share2 } from "lucide-react-native";
@@ -18,9 +19,11 @@ import Animated, {
 } from "react-native-reanimated";
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function PreviewScreen() {
-  const [sound, setSound] = useState<Audio.Sound>();
+  const soundRef = useRef<Audio.Sound | null>(null); // Ref for audio
+
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const opacity = useSharedValue(1); // Shared value for fade effect
@@ -29,6 +32,7 @@ export default function PreviewScreen() {
   const { photos } = useLocalSearchParams();
   const parsedPhotos = typeof photos === "string" ? JSON.parse(photos) : [];
 
+  // Slide photos every 3 seconds
   useEffect(() => {
     if (parsedPhotos.length === 0) return;
     const interval = setInterval(() => {
@@ -51,20 +55,23 @@ export default function PreviewScreen() {
     return () => clearInterval(interval);
   }, [parsedPhotos.length]); // Correct dependency
 
+  // Load audio when component mounts
   useEffect(() => {
     loadAudio();
     return () => {
-      sound?.unloadAsync();
+      if (soundRef.current) {
+        soundRef.current.unloadAsync(); // Unload audio when leaving
+      }
     };
   }, []);
 
   async function loadAudio() {
     try {
       const { sound } = await Audio.Sound.createAsync(
-        require("../assets/audio/background-music.mp3"), // Update path to your file
+        require("../assets/audio/background-music.mp3"),
         { shouldPlay: true, isLooping: true }
       );
-      setSound(sound);
+      soundRef.current = sound;
     } catch (error) {
       console.error("Error loading audio:", error);
     }
@@ -88,6 +95,7 @@ export default function PreviewScreen() {
     ],
   }));
 
+  // Request permission to access media library
   useEffect(() => {
     async function checkPermission() {
       const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -100,6 +108,7 @@ export default function PreviewScreen() {
     checkPermission();
   }, []);
 
+  // Check file type of the current photo
   async function checkFileType(uri: string) {
     const info = await FileSystem.getInfoAsync(uri);
     console.log("File Info:", info);
@@ -117,13 +126,47 @@ export default function PreviewScreen() {
     ],
   }));
 
+  // Stops the audio when:-
+  // Pressing the hardware back button on Android.
+  // Using the header back button.
+  // Navigating away from the PreviewScreen.
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true; // To prevent race conditions
+      const stopAudioOnBack = async () => {
+        if (soundRef.current && isMounted) {
+          console.log("Stopping audio...");
+          await soundRef.current.stopAsync(); // Stop audio properly
+        }
+      };
+
+      // Handle hardware back button (Android)
+      const backHandler = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          stopAudioOnBack(); // Stop audio on back
+          router.back(); // Navigate back
+          return true; // Prevent default back behavior
+        }
+      );
+
+      return () => {
+        isMounted = false; // Clean up flag
+        stopAudioOnBack(); // Stop audio when unmounting
+        backHandler.remove(); // Clean up back handler
+      };
+    }, [])
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => {
-            sound?.stopAsync();
+            if (soundRef.current) {
+              soundRef.current.stopAsync(); // Stop audio on header back
+            }
             router.back();
           }}
         >
@@ -152,14 +195,14 @@ export default function PreviewScreen() {
               fadeStyle,
               slideStyle,
               animatedStyle,
-              {
-                width: 300, // Temporary width
-                height: 500, // Temporary height
-                borderWidth: 1,
-                borderColor: "#fff",
-                resizeMode: "cover", // Replace objectFit with this
-                backgroundColor: "#000", // Add this to make it visible
-              },
+              // {
+              //   width: 300, // Temporary width
+              //   height: 500, // Temporary height
+              //   borderWidth: 1,
+              //   borderColor: "#fff",
+              //   resizeMode: "cover", // Replace objectFit with this
+              //   backgroundColor: "#000", // Add this to make it visible
+              // },
             ]}
           />
         ) : (
@@ -173,12 +216,14 @@ export default function PreviewScreen() {
         <TouchableOpacity
           style={styles.playButton}
           onPress={() => {
-            if (isPlaying) {
-              sound?.pauseAsync();
-            } else {
-              sound?.playAsync();
+            if (soundRef.current) {
+              if (isPlaying) {
+                soundRef.current.pauseAsync(); // Pause the audio
+              } else {
+                soundRef.current.playAsync(); // Play the audio
+              }
+              setIsPlaying(!isPlaying);
             }
-            setIsPlaying(!isPlaying);
           }}
         >
           <Text style={styles.playButtonText}>
