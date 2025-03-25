@@ -30,11 +30,15 @@ export default function PreviewScreen() {
   const parsedPhotos = typeof photos === "string" ? JSON.parse(photos) : [];
 
   useEffect(() => {
+    if (parsedPhotos.length === 0) return;
     const interval = setInterval(() => {
       translateX.value = -300; // Slide out to the left
       opacity.value = 0; // Fade out
       setTimeout(() => {
-        setCurrentPhotoIndex((prev) => (prev + 1) % photos.length);
+        setCurrentPhotoIndex((prev) => {
+          const nextIndex = (prev + 1) % parsedPhotos.length; // Correct array
+          return nextIndex;
+        });
         translateX.value = 300; // Reset to right for next slide
         opacity.value = 0;
         setTimeout(() => {
@@ -45,7 +49,7 @@ export default function PreviewScreen() {
     }, 3000); // Every 3 seconds
 
     return () => clearInterval(interval);
-  }, [photos.length]);
+  }, [parsedPhotos.length]); // Correct dependency
 
   useEffect(() => {
     loadAudio();
