@@ -13,8 +13,6 @@ import { Audio } from "expo-av";
 import Animated, {
   useAnimatedStyle,
   withTiming,
-  withSequence,
-  withDelay,
   useSharedValue,
 } from "react-native-reanimated";
 import * as MediaLibrary from "expo-media-library";
@@ -41,6 +39,10 @@ export default function PreviewScreen() {
       setTimeout(() => {
         setCurrentPhotoIndex((prev) => {
           const nextIndex = (prev + 1) % parsedPhotos.length; // Correct array
+          // Check file type only when photo changes
+          if (parsedPhotos[nextIndex]?.uri) {
+            checkFileType(parsedPhotos[nextIndex]?.uri);
+          }
           return nextIndex;
         });
         translateX.value = 300; // Reset to right for next slide
@@ -50,7 +52,7 @@ export default function PreviewScreen() {
           opacity.value = 1; // Fade in
         }, 100);
       }, 500);
-    }, 3000); // Every 3 seconds
+    }, 2500); // Every 3 seconds
 
     return () => clearInterval(interval);
   }, [parsedPhotos.length]); // Correct dependency
@@ -60,49 +62,33 @@ export default function PreviewScreen() {
     loadAudio();
     return () => {
       if (soundRef.current) {
-        soundRef.current.unloadAsync(); // Unload audio when leaving
+        stopAndUnloadAudio(); // Stop and unload audio when leaving
       }
     };
   }, []);
 
   async function loadAudio() {
+    if (soundRef.current) return; // Skip if already loaded
     try {
       const { sound } = await Audio.Sound.createAsync(
         require("../assets/audio/background-music.mp3"),
         { shouldPlay: true, isLooping: true }
       );
       soundRef.current = sound;
+      console.log("Audio loaded successfully!");
     } catch (error) {
       console.error("Error loading audio:", error);
     }
   }
 
-  const fadeStyle = useAnimatedStyle(() => ({
-    opacity: withSequence(
-      withTiming(1, { duration: 1000 }),
-      withDelay(2000, withTiming(0, { duration: 1000 }))
-    ),
-  }));
-
-  const slideStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: withSequence(
-          withTiming(0, { duration: 1000 }),
-          withDelay(2000, withTiming(-300, { duration: 1000 }))
-        ),
-      },
-    ],
-  }));
-
   // Request permission to access media library
   useEffect(() => {
     async function checkPermission() {
       const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Permission to access media library was denied.");
-      } else if (status === "granted") {
+      if (status === "granted") {
         console.log("Permission to access media library was granted.");
+      } else {
+        console.log("Permission to access media library was denied.");
       }
     }
     checkPermission();
@@ -113,11 +99,6 @@ export default function PreviewScreen() {
     const info = await FileSystem.getInfoAsync(uri);
     console.log("File Info:", info);
   }
-  useEffect(() => {
-    if (parsedPhotos[currentPhotoIndex]?.uri) {
-      checkFileType(parsedPhotos[currentPhotoIndex]?.uri);
-    }
-  }, [currentPhotoIndex]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: withTiming(opacity.value, { duration: 500 }),
@@ -132,31 +113,30 @@ export default function PreviewScreen() {
   // Navigating away from the PreviewScreen.
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true; // To prevent race conditions
-      const stopAudioOnBack = async () => {
-        if (soundRef.current && isMounted) {
-          console.log("Stopping audio...");
-          await soundRef.current.stopAsync(); // Stop audio properly
-        }
-      };
-
       // Handle hardware back button (Android)
       const backHandler = BackHandler.addEventListener(
         "hardwareBackPress",
         () => {
-          stopAudioOnBack(); // Stop audio on back
+          stopAndUnloadAudio();
           router.back(); // Navigate back
           return true; // Prevent default back behavior
         }
       );
 
       return () => {
-        isMounted = false; // Clean up flag
-        stopAudioOnBack(); // Stop audio when unmounting
+        stopAndUnloadAudio(); //  Clean up audio when navigating away
         backHandler.remove(); // Clean up back handler
       };
     }, [])
   );
+
+  async function stopAndUnloadAudio() {
+    if (soundRef.current) {
+      await soundRef.current.stopAsync(); // Stop audio if playing
+      await soundRef.current.unloadAsync(); // Unload audio to free resources
+      soundRef.current = null; // Clear ref to avoid issues
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -190,20 +170,7 @@ export default function PreviewScreen() {
         {parsedPhotos?.length > 0 ? (
           <Animated.Image
             source={{ uri: parsedPhotos[currentPhotoIndex]?.uri }}
-            style={[
-              styles.previewImage,
-              fadeStyle,
-              slideStyle,
-              animatedStyle,
-              // {
-              //   width: 300, // Temporary width
-              //   height: 500, // Temporary height
-              //   borderWidth: 1,
-              //   borderColor: "#fff",
-              //   resizeMode: "cover", // Replace objectFit with this
-              //   backgroundColor: "#000", // Add this to make it visible
-              // },
-            ]}
+            style={[styles.previewImage, animatedStyle]}
           />
         ) : (
           <Text style={{ color: "#fff", fontSize: 16 }}>
