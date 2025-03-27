@@ -18,12 +18,18 @@ import Animated, {
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
 import { useFocusEffect } from "@react-navigation/native";
+import {
+  FFmpegKit,
+  FFmpegKitConfig,
+  ReturnCode,
+} from "ffmpeg-kit-react-native";
 
 export default function PreviewScreen() {
   const soundRef = useRef<Audio.Sound | null>(null); // Ref for audio
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [isFFmpegReady, setIsFFmpegReady] = useState(false);
   const opacity = useSharedValue(1); // Shared value for fade effect
   const translateX = useSharedValue(0); // Position for sliding
 
@@ -138,6 +144,109 @@ export default function PreviewScreen() {
     }
   }
 
+  useEffect(() => {
+    async function loadFFmpeg() {
+      console.log("🚀 Initializing FFmpeg...");
+      // Run a basic command to ensure FFmpeg is ready
+      await FFmpegKit.executeAsync("-version");
+      console.log("✅ FFmpeg is ready for use!");
+    }
+
+    loadFFmpeg();
+  }, []);
+
+  async function checkFFmpegReady() {
+    const logLevel = await FFmpegKitConfig.getLogLevel();
+    if (!logLevel) {
+      console.error("❗️ FFmpegKit is not ready. Initializing...");
+      await FFmpegKit.executeAsync("-version");
+      console.log("✅ FFmpegKit is now ready!");
+    } else {
+      console.log("✅ FFmpegKit is ready.");
+    }
+  }
+  // code to stitch photos into a video with overlay sound
+
+  // Generate the video
+  async function createVideoFromPhotos(
+    photoUris: string[],
+    outputFileName: string,
+    durationPerPhoto: number = 3
+  ) {
+    try {
+      // Set output path to cache directory
+      const outputPath = `${FileSystem.cacheDirectory}${outputFileName}`;
+
+      // Generate FFmpeg input list dynamically
+      const inputList = photoUris
+        .map(
+          (uri) =>
+            `file '${uri.replace("file://", "")}'\nduration ${durationPerPhoto}`
+        )
+        .join("\n");
+
+      // Create input list file dynamically in cache directory
+      const inputListPath = `${FileSystem.cacheDirectory}input.txt`;
+      await FileSystem.writeAsStringAsync(inputListPath, inputList, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      console.log("✅ Input list created at:", inputListPath);
+
+      // FFmpeg command to create the video from photos
+      const ffmpegCommand = `
+      -f concat -safe 0 -i ${inputListPath.replace("file://", "")}
+      -vf "scale=720:1280,format=yuv420p"
+      -r 30 -pix_fmt yuv420p ${outputPath.replace("file://", "")}
+    `;
+
+      console.log("🎥 FFmpeg command:", ffmpegCommand);
+
+      // Run FFmpeg command
+      const session = await FFmpegKit.execute(ffmpegCommand);
+
+      // Get return code and check for success
+      const returnCode = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(returnCode)) {
+        console.log("✅ Video created successfully at:", outputPath);
+        return outputPath;
+      } else if (ReturnCode.isCancel(returnCode)) {
+        console.error("⚠️ FFmpeg execution was cancelled.");
+        throw new Error("FFmpeg execution was cancelled.");
+      } else {
+        console.error(
+          "❌ Error creating video:",
+          await session.getFailStackTrace()
+        );
+        throw new Error("Error creating video.");
+      }
+    } catch (error) {
+      console.error("❗️ Error during video creation:", error);
+      throw error;
+    }
+  }
+
+  //  Export or download video after combining photos
+  async function exportVideo() {
+    try {
+      // Check if FFmpeg is ready before exporting
+      await checkFFmpegReady();
+      // Set final video output path
+      const outputFileName = "final_video.mp4";
+
+      // Create the video from selected photos
+      const outputPath = await createVideoFromPhotos(
+        parsedPhotos.map((photo) => photo.uri),
+        outputFileName
+      );
+
+      console.log("✅ Final video ready at:", outputPath);
+    } catch (error) {
+      console.error("❌ Error exporting video:", error);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -155,7 +264,7 @@ export default function PreviewScreen() {
         </TouchableOpacity>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity style={styles.actionButton} onPress={exportVideo}>
             <Download size={20} color="#fff" />
             <Text style={styles.actionText}>Save</Text>
           </TouchableOpacity>
