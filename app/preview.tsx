@@ -104,7 +104,7 @@ export default function PreviewScreen() {
   // Check file type of the current photo
   async function checkFileType(uri: string) {
     const info = await FileSystem.getInfoAsync(uri);
-    console.log("File Info:", info);
+    // console.log("File Info:", info);
   }
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -157,17 +157,6 @@ export default function PreviewScreen() {
 
     loadFFmpeg();
   }, []);
-
-  // async function checkFFmpegReady() {
-  //   const logLevel = await FFmpegKitConfig.getLogLevel();
-  //   if (!logLevel) {
-  //     console.error("❗️ FFmpegKit is not ready. Initializing...");
-  //     await FFmpegKit.executeAsync("-version");
-  //     console.log("✅ FFmpegKit is now ready!");
-  //   } else {
-  //     console.log("✅ FFmpegKit is ready.");
-  //   }
-  // }
 
   async function checkFFmpegReady() {
     console.log("⚡️ Checking FFmpeg status...");
