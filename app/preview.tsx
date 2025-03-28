@@ -170,6 +170,31 @@ export default function PreviewScreen() {
     return `${baseName}_${timestamp}.${extension}`;
   };
 
+  // Save the generated video in File Explorer
+  async function saveToMediaLibrary(fileUri: string) {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") {
+        throw new Error("Permission to access media library is required.");
+      }
+
+      // Save video to media library (visible in file explorer or gallery)
+      const asset = await MediaLibrary.createAssetAsync(fileUri);
+
+      // Move to the Downloads folder (optional)
+      const album = await MediaLibrary.getAlbumAsync("Download");
+      if (album == null) {
+        await MediaLibrary.createAlbumAsync("Download", asset, false);
+      } else {
+        await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+      }
+
+      console.log("✅ Video saved to media library and Downloads folder!");
+    } catch (error) {
+      console.error("❌ Error saving to media library:", error);
+    }
+  }
+
   // Generate video and store in app's internal storage
   async function createVideoFromPhotos(
     photoUris: string[],
@@ -185,8 +210,8 @@ export default function PreviewScreen() {
       // Use a different approach for Android file paths
       const baseDirectory =
         Platform.OS === "android"
-          ? `${FileSystem.cacheDirectory}`
-          : FileSystem.cacheDirectory || FileSystem.documentDirectory;
+          ? `${FileSystem.documentDirectory}` // Use documentDirectory for Android
+          : FileSystem.documentDirectory;
 
       if (!baseDirectory) {
         throw new Error("Unable to access file system directory");
@@ -281,6 +306,8 @@ export default function PreviewScreen() {
 
       if (ReturnCode.isSuccess(returnCode)) {
         console.log("✅ Video created successfully at:", outputPath);
+        // Save the file to Media Library (Gallery/Downloads)
+        await saveToMediaLibrary(outputPath);
         return outputPath;
       } else if (ReturnCode.isCancel(returnCode)) {
         console.error("⚠️ FFmpeg execution was cancelled.");
