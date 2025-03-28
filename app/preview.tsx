@@ -24,6 +24,7 @@ import {
   ReturnCode,
 } from "ffmpeg-kit-react-native";
 import { Buffer } from "buffer";
+import { Asset } from "expo-asset";
 
 export default function PreviewScreen() {
   const soundRef = useRef<Audio.Sound | null>(null); // Ref for audio
@@ -146,6 +147,23 @@ export default function PreviewScreen() {
   }
 
   // code to stitch photos into a video with overlay sound
+
+  // Get audio file path for FFmpeg command
+  async function getAudioFilePath(): Promise<string | null> {
+    const audioAsset = Asset.fromModule(
+      require("../assets/audio/background-music.mp3")
+    );
+    await audioAsset.downloadAsync(); // Make sure the asset is ready
+
+    // Get info about the audio file
+    if (audioAsset.localUri) {
+      console.log("🎵 Audio file found at:", audioAsset.localUri);
+      return audioAsset.localUri.replace("file://", "");
+    } else {
+      console.error("❌ Audio file not found!");
+      return null;
+    }
+  }
 
   useEffect(() => {
     async function loadFFmpeg() {
@@ -293,8 +311,14 @@ export default function PreviewScreen() {
         throw prepError;
       }
 
-      // FFmpeg command to create the video from photos
-      const ffmpegCommand = `-f concat -safe 0 -i ${inputListPath} -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p ${outputPath}`;
+      // Get audio file path
+      const audioPath = await getAudioFilePath();
+      if (!audioPath) {
+        throw new Error("Audio file path is invalid!");
+      }
+
+      // FFmpeg command to create the video from photos with audio overlay
+      const ffmpegCommand = `-f concat -safe 0 -i ${inputListPath} -i ${audioPath} -map 0:v:0 -map 1:a:0 -shortest -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p ${outputPath}`;
 
       console.log("🎥 FFmpeg command:", ffmpegCommand);
 
