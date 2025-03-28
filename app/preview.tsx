@@ -174,6 +174,13 @@ export default function PreviewScreen() {
     await FFmpegKit.executeAsync("-version");
     console.log("✅ FFmpegKit is ready!");
   }
+
+  // Generate a unique filename using timestamp
+  const getUniqueFileName = (baseName: string, extension: string) => {
+    const timestamp = Date.now(); // Get current time in milliseconds
+    return `${baseName}_${timestamp}.${extension}`;
+  };
+
   // Generate video and store in app's internal storage
   async function createVideoFromPhotos(
     photoUris: string[],
@@ -196,8 +203,11 @@ export default function PreviewScreen() {
         throw new Error("Unable to access file system directory");
       }
 
-      // Set output path
-      const outputPath = `${baseDirectory}${outputFileName}`.replace(
+      // Create a unique name for the video file
+      const uniqueFileName = getUniqueFileName("final_video", "mp4");
+
+      // Set output path with unique name
+      const outputPath = `${baseDirectory}${uniqueFileName}`.replace(
         "file://",
         ""
       );
