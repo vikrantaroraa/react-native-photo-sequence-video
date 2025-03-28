@@ -23,6 +23,7 @@ import {
   FFmpegKitConfig,
   ReturnCode,
 } from "ffmpeg-kit-react-native";
+import { Buffer } from "buffer";
 
 export default function PreviewScreen() {
   const soundRef = useRef<Audio.Sound | null>(null); // Ref for audio
@@ -144,6 +145,8 @@ export default function PreviewScreen() {
     }
   }
 
+  // code to stitch photos into a video with overlay sound
+
   useEffect(() => {
     async function loadFFmpeg() {
       console.log("🚀 Initializing FFmpeg...");
@@ -155,50 +158,119 @@ export default function PreviewScreen() {
     loadFFmpeg();
   }, []);
 
-  async function checkFFmpegReady() {
-    const logLevel = await FFmpegKitConfig.getLogLevel();
-    if (!logLevel) {
-      console.error("❗️ FFmpegKit is not ready. Initializing...");
-      await FFmpegKit.executeAsync("-version");
-      console.log("✅ FFmpegKit is now ready!");
-    } else {
-      console.log("✅ FFmpegKit is ready.");
-    }
-  }
-  // code to stitch photos into a video with overlay sound
+  // async function checkFFmpegReady() {
+  //   const logLevel = await FFmpegKitConfig.getLogLevel();
+  //   if (!logLevel) {
+  //     console.error("❗️ FFmpegKit is not ready. Initializing...");
+  //     await FFmpegKit.executeAsync("-version");
+  //     console.log("✅ FFmpegKit is now ready!");
+  //   } else {
+  //     console.log("✅ FFmpegKit is ready.");
+  //   }
+  // }
 
-  // Generate the video
+  async function checkFFmpegReady() {
+    console.log("⚡️ Checking FFmpeg status...");
+    await FFmpegKit.executeAsync("-version");
+    console.log("✅ FFmpegKit is ready!");
+  }
+  // Generate video and store in app's internal storage
   async function createVideoFromPhotos(
     photoUris: string[],
     outputFileName: string,
     durationPerPhoto: number = 3
   ) {
     try {
-      // Set output path to cache directory
-      const outputPath = `${FileSystem.cacheDirectory}${outputFileName}`;
+      // Ensure file:// prefix is removed for local file paths
+      const cleanUris = photoUris.map((uri) =>
+        uri.startsWith("file://") ? uri.replace("file://", "") : uri
+      );
+
+      // Use a different approach for Android file paths
+      const baseDirectory =
+        Platform.OS === "android"
+          ? `${FileSystem.cacheDirectory}`
+          : FileSystem.cacheDirectory || FileSystem.documentDirectory;
+
+      if (!baseDirectory) {
+        throw new Error("Unable to access file system directory");
+      }
+
+      // Set output path
+      const outputPath = `${baseDirectory}${outputFileName}`.replace(
+        "file://",
+        ""
+      );
 
       // Generate FFmpeg input list dynamically
-      const inputList = photoUris
-        .map(
-          (uri) =>
-            `file '${uri.replace("file://", "")}'\nduration ${durationPerPhoto}`
-        )
+      const inputList = cleanUris
+        .map((uri) => `file '${uri}'\nduration ${durationPerPhoto}`)
         .join("\n");
 
-      // Create input list file dynamically in cache directory
-      const inputListPath = `${FileSystem.cacheDirectory}input.txt`;
-      await FileSystem.writeAsStringAsync(inputListPath, inputList, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      // Create input list file path
+      const inputListPath = `${baseDirectory}input.txt`;
 
-      console.log("✅ Input list created at:", inputListPath);
+      // Comprehensive directory and file management
+      try {
+        // Ensure base directory exists
+        await FileSystem.makeDirectoryAsync(baseDirectory, {
+          intermediates: true,
+        }).catch((err) => {
+          console.log("Directory may already exist:", err);
+        });
+
+        // Explicitly remove existing file if it exists
+        try {
+          await FileSystem.deleteAsync(inputListPath, { idempotent: true });
+        } catch (deleteError) {
+          console.log(
+            "Error deleting existing file (possibly normal):",
+            deleteError
+          );
+        }
+
+        // Write file using writeAsync instead of writeAsStringAsync
+        try {
+          // Convert string to base64 to avoid potential encoding issues
+          const base64Content = Buffer.from(inputList).toString("base64");
+
+          await FileSystem.writeAsStringAsync(inputListPath, base64Content, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
+          // Verify file creation
+          const fileInfo = await FileSystem.getInfoAsync(inputListPath);
+          if (!fileInfo.exists || fileInfo.size === 0) {
+            throw new Error("File write verification failed");
+          }
+
+          console.log("✅ Input list created successfully:", {
+            path: inputListPath,
+            size: fileInfo.size,
+          });
+        } catch (writeError) {
+          console.error("❌ File Writing Error Details:", {
+            error: writeError,
+            baseDirectory,
+            inputListPath,
+            platform: Platform.OS,
+          });
+
+          // Additional diagnostic logging
+          console.log(
+            "Full error object:",
+            JSON.stringify(writeError, Object.getOwnPropertyNames(writeError))
+          );
+
+          throw writeError;
+        }
+      } catch (prepError) {
+        console.error("❌ Preparation Error:", prepError);
+        throw prepError;
+      }
 
       // FFmpeg command to create the video from photos
-      const ffmpegCommand = `
-      -f concat -safe 0 -i ${inputListPath.replace("file://", "")}
-      -vf "scale=720:1280,format=yuv420p"
-      -r 30 -pix_fmt yuv420p ${outputPath.replace("file://", "")}
-    `;
+      const ffmpegCommand = `-f concat -safe 0 -i ${inputListPath} -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p ${outputPath}`;
 
       console.log("🎥 FFmpeg command:", ffmpegCommand);
 
@@ -223,6 +295,13 @@ export default function PreviewScreen() {
       }
     } catch (error) {
       console.error("❗️ Error during video creation:", error);
+
+      // Enhanced error logging
+      console.log(
+        "Full error details:",
+        JSON.stringify(error, Object.getOwnPropertyNames(error))
+      );
+
       throw error;
     }
   }
