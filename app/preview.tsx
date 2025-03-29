@@ -318,7 +318,7 @@ export default function PreviewScreen() {
       }
 
       // FFmpeg command to create the video from photos with audio overlay
-      const ffmpegCommand = `-f concat -safe 0 -i ${inputListPath} -i ${audioPath} -map 0:v:0 -map 1:a:0 -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p ${outputPath}`;
+      const ffmpegCommand = `-stream_loop -1 -f concat -safe 0 -i ${inputListPath} -i ${audioPath} -map 0:v:0 -map 1:a:0 -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p ${outputPath}`;
 
       console.log("🎥 FFmpeg command:", ffmpegCommand);
 
