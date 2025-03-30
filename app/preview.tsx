@@ -32,6 +32,7 @@ export default function PreviewScreen() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isFFmpegReady, setIsFFmpegReady] = useState(false);
+  const [startTime, setStartTime] = useState(null);
   const opacity = useSharedValue(1); // Shared value for fade effect
   const translateX = useSharedValue(0); // Position for sliding
 
@@ -176,6 +177,12 @@ export default function PreviewScreen() {
     loadFFmpeg();
   }, []);
 
+  // Start tracking time when preview starts
+  useEffect(() => {
+    const start = Date.now();
+    setStartTime(start);
+  }, []);
+
   async function checkFFmpegReady() {
     console.log("⚡️ Checking FFmpeg status...");
     await FFmpegKit.executeAsync("-version");
@@ -217,7 +224,8 @@ export default function PreviewScreen() {
   async function createVideoFromPhotos(
     photoUris: string[],
     outputFileName: string,
-    durationPerPhoto: number = 3
+    durationPerPhoto: number = 3,
+    videoDuration: number
   ) {
     try {
       // Ensure file:// prefix is removed for local file paths
@@ -318,7 +326,7 @@ export default function PreviewScreen() {
       }
 
       // FFmpeg command to create the video from photos with audio overlay
-      const ffmpegCommand = `-stream_loop -1 -f concat -safe 0 -i ${inputListPath} -i ${audioPath} -map 0:v:0 -map 1:a:0 -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p ${outputPath}`;
+      const ffmpegCommand = `-stream_loop -1 -f concat -safe 0 -i ${inputListPath} -i ${audioPath} -map 0:v:0 -map 1:a:0 -vf "scale=720:1280,format=yuv420p" -r 30 -pix_fmt yuv420p -t ${videoDuration} ${outputPath}`;
 
       console.log("🎥 FFmpeg command:", ffmpegCommand);
 
@@ -361,16 +369,28 @@ export default function PreviewScreen() {
     try {
       // Check if FFmpeg is ready before exporting
       await checkFFmpegReady();
-      // Set final video output path
-      const outputFileName = "final_video.mp4";
 
-      // Create the video from selected photos
-      const outputPath = await createVideoFromPhotos(
-        parsedPhotos.map((photo) => photo.uri),
-        outputFileName
-      );
+      // Calculate duration at the moment of save
+      if (startTime) {
+        const end = Date.now();
+        const durationInSeconds = (end - startTime) / 1000;
+        console.log("⏱️ Final video duration:", durationInSeconds);
 
-      console.log("✅ Final video ready at:", outputPath);
+        // Set final video output path
+        const outputFileName = "final_video.mp4";
+
+        // Create the video from selected photos
+        const outputPath = await createVideoFromPhotos(
+          parsedPhotos.map((photo) => photo.uri),
+          outputFileName,
+          3,
+          durationInSeconds // Pass duration directly here
+        );
+
+        console.log("✅ Final video ready at:", outputPath);
+      } else {
+        console.error("⚠️ Start time is undefined. Cannot calculate duration.");
+      }
     } catch (error) {
       console.error("❌ Error exporting video:", error);
     }
