@@ -40,7 +40,7 @@ export default function PreviewScreen() {
   const parsedPhotos = typeof photos === "string" ? JSON.parse(photos) : [];
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  // Replace your current timing effect with this one
+  // Slide photos every 3 seconds
   useEffect(() => {
     if (parsedPhotos.length === 0) return;
 
@@ -54,36 +54,6 @@ export default function PreviewScreen() {
     }, 1000);
 
     // Setup photo transition interval
-    const interval = setInterval(() => {
-      translateX.value = -300; // Slide out to the left
-      opacity.value = 0; // Fade out
-      setTimeout(() => {
-        setCurrentPhotoIndex((prev) => {
-          const nextIndex = (prev + 1) % parsedPhotos.length;
-          // Check file type only when photo changes
-          if (parsedPhotos[nextIndex]?.uri) {
-            checkFileType(parsedPhotos[nextIndex]?.uri);
-          }
-          return nextIndex;
-        });
-        translateX.value = 300; // Reset to right for next slide
-        opacity.value = 0;
-        setTimeout(() => {
-          translateX.value = 0; // Slide in from right
-          opacity.value = 1; // Fade in
-        }, 100);
-      }, 500);
-    }, 2500); // Every 3 seconds (including animation time)
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(timer);
-    };
-  }, [parsedPhotos.length]);
-
-  // Slide photos every 3 seconds
-  useEffect(() => {
-    if (parsedPhotos.length === 0) return;
     const interval = setInterval(() => {
       translateX.value = -300; // Slide out to the left
       opacity.value = 0; // Fade out
@@ -105,7 +75,10 @@ export default function PreviewScreen() {
       }, 500);
     }, 2500); // Every 3 seconds
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearInterval(timer);
+    };
   }, [parsedPhotos.length]); // Correct dependency
 
   // Load audio when component mounts
