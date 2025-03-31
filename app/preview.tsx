@@ -18,12 +18,7 @@ import Animated, {
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
 import { useFocusEffect } from "@react-navigation/native";
-import {
-  FFmpegKit,
-  FFmpegKitConfig,
-  ReturnCode,
-} from "ffmpeg-kit-react-native";
-import { Buffer } from "buffer";
+import { FFmpegKit, ReturnCode } from "ffmpeg-kit-react-native";
 import { Asset } from "expo-asset";
 
 export default function PreviewScreen() {
@@ -31,14 +26,11 @@ export default function PreviewScreen() {
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [isFFmpegReady, setIsFFmpegReady] = useState(false);
-  const [startTime, setStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const opacity = useSharedValue(1); // Shared value for fade effect
   const translateX = useSharedValue(0); // Position for sliding
-
   const { photos } = useLocalSearchParams();
   const parsedPhotos = typeof photos === "string" ? JSON.parse(photos) : [];
-  const [elapsedTime, setElapsedTime] = useState(0);
 
   // Slide photos every 3 seconds
   useEffect(() => {
@@ -46,7 +38,6 @@ export default function PreviewScreen() {
 
     // Start time tracking
     const start = Date.now();
-    setStartTime(start);
 
     // Use a timer to track elapsed time accurately
     const timer = setInterval(() => {
@@ -194,12 +185,6 @@ export default function PreviewScreen() {
     }
 
     loadFFmpeg();
-  }, []);
-
-  // Start tracking time when preview starts
-  useEffect(() => {
-    const start = Date.now();
-    setStartTime(start);
   }, []);
 
   async function checkFFmpegReady() {
@@ -441,7 +426,7 @@ export default function PreviewScreen() {
 
       // Create the video from selected photos with the exact elapsed time
       const outputPath = await createVideoFromPhotos(
-        parsedPhotos.map((photo) => photo.uri),
+        parsedPhotos.map((photo: any) => photo.uri),
         outputFileName,
         currentElapsedTime
       );
